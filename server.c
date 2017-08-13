@@ -5,7 +5,8 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
-#define CONNECTION_QUEUE_MAX 7
+#define CONNECTION_QUEUE_MAX 2
+#define MESSAGE_MAX_LEN 300
 
 int main(int argc, char *argv[])
 {
@@ -34,17 +35,34 @@ int main(int argc, char *argv[])
 		printf("error in socket creation()\n");
 	};
 	
-	bind(sockfd, res->ai_addr, res->ai_addrlen);
-	listen(sockfd, CONNECTION_QUEUE_MAX);
+	int bindstatus;
+	int listenstatus;
+
+	// error checking
+	bindstatus = bind(sockfd, res->ai_addr, res->ai_addrlen);
+	if (bindstatus != 0) {
+		perror("error"); 
+		return -1;
+	}
+
+	listenstatus = listen(sockfd, CONNECTION_QUEUE_MAX);
+	if (listenstatus != 0) {
+		perror("error"); 
+		return -1;
+	}
 
 	int connectfd;
-	int size = sizeof(incoming);
+	socklen_t size = sizeof(incoming);
 	printf("listening on: %s\n", ipstring);
-	connectfd = accept(sockfd, (struct sockaddr *)&incoming, &size);
 
-	if (status != 0) {
-		perror("error");
+	while (0 != 1) {
+		connectfd = accept(sockfd, (struct sockaddr *)&incoming, &size);
+
+		char msg_buffer[MESSAGE_MAX_LEN];
+		status = recv(connectfd, (void *)msg_buffer, MESSAGE_MAX_LEN, 0);
+
+		printf("message received: %s", msg_buffer);
 	}
-	
+
 	return status;
 }
