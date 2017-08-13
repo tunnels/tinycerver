@@ -1,2 +1,4 @@
 .DS_Store
 ports.txt
+client
+server
