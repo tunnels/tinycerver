@@ -7,11 +7,14 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
+#include "http_codes.h"
+
 #define CONNECTION_QUEUE_MAX 5
 #define MESSAGE_MAX_LEN 300
 
-int getConnection(int sockfd, struct sockaddr_storage incoming);
-void checkErrors(int errType, int status);
+int createConnection(int sockfd, struct sockaddr_storage incoming);
+void checkErrors(int error_type, int status);
+int attemptFileRetrieval(int connectfd);
 
 int main(int argc, char *argv[])
 {
@@ -41,50 +44,37 @@ int main(int argc, char *argv[])
 
 	printf("listening on: %s\n", ipstring);
 	
-	getConnection(sockfd, incoming);
+	createConnection(sockfd, incoming);
 
 	return 0;
 }
 
-int getConnection(int sockfd, struct sockaddr_storage incoming)
+int createConnection(int sockfd, struct sockaddr_storage incoming)
 {
 	int status;
 	int stop = 0;
-	socklen_t sizeOfIncoming = sizeof(incoming);
+	socklen_t size_of_incoming = sizeof(incoming);
 	
-	char *exitText = "exit";
-	size_t exitTextLen = strlen(exitText);
+	char *exit_message = "exit";
+	size_t exit_message_len = strlen(exit_message);
 
 	while (stop == 0) {
 		// getRequest() to be defined
-		char messageBuffer[MESSAGE_MAX_LEN] = "";
+		char message_buffer[MESSAGE_MAX_LEN] = "";
 
-		int connectfd = accept(sockfd, (struct sockaddr *)&incoming, &sizeOfIncoming);
+		int connectfd = accept(sockfd, (struct sockaddr *)&incoming, &size_of_incoming);
 		checkErrors(4, connectfd);
 
-		status = recv(connectfd, (void *)messageBuffer, MESSAGE_MAX_LEN, 0);
+		status = recv(connectfd, (void *)message_buffer, MESSAGE_MAX_LEN, 0);
 		checkErrors(5, status);
 
-		const char* status_not_found = 
-			"HTTP/1.1 404 Not Found\r\n"
-			"Content-type: text/html\r\n"
-			"\r\n"
-			"<html>\r\n"
-			"	<body>\r\n"
-			"		<h1>Not Found</h1>\r\n"
-			"		<p>The requested URL was not found on this server.</p>\r\n"
-			"	</body>\r\n"
-			"</html>\r\n";
-
-		int responseLength = strlen(status_not_found);
-		status = send(connectfd, status_not_found, responseLength, 0);
-		checkErrors(6, status);
+		attemptFileRetrieval(connectfd);
 
 		printf("connection recorded\n");
 		close(connectfd);
     
-		// printf("message received: %s", messageBuffer);
-		// if (strncmp(messageBuffer, exitText, exitTextLen) == 0) {
+		// printf("message received: %s", message_buffer);
+		// if (strncmp(message_buffer, exit_message, exit_message_len) == 0) {
 		// 	printf("action: terminating connection\n");
 		// 	close(sockfd);
 		// 	break;
@@ -94,15 +84,35 @@ int getConnection(int sockfd, struct sockaddr_storage incoming)
 	return 0;
 }
 
-void checkErrors(int errType, int status)
+int attemptFileRetrieval(int connectfd)
 {
-	if (errType == 0) {
+	char* http_response = getStatusGivenCode(500);
+	const char filename[] = "test.txt";
+	FILE *file_pointer = fopen(filename, "rb");
+	
+	if (file_pointer == NULL) {
+		http_response = getStatusGivenCode(404);
+	}
+	else {
+		printf("retrieving file: %s\n", filename);
+	}
+
+	int response_length = strlen(http_response);
+	int status = send(connectfd, http_response, response_length, 0);
+	checkErrors(6, status);
+
+	return 0;
+}
+
+void checkErrors(int error_type, int status)
+{
+	if (error_type == 0) {
 		if (status != 0) {
 			printf("error in getaddrinfo(): %s\n", gai_strerror(status));
 			exit(0);
 		}
 	}
-	else if (errType >= 1 && errType <= 6) {
+	else if (error_type >= 1 && error_type <= 6) {
 		if (status == -1) {
 			perror("error"); 
 			exit(0);
