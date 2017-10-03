@@ -13,8 +13,9 @@
 #define MESSAGE_MAX_LEN 300
 
 int createConnection(int sockfd, struct sockaddr_storage incoming);
-void checkErrors(int error_type, int status);
 int attemptFileRetrieval(int connectfd);
+uint8_t *getFileContentsFromFilePointer(FILE *fp);
+void checkErrors(int error_type, int status);
 
 int main(int argc, char *argv[])
 {
@@ -55,8 +56,8 @@ int createConnection(int sockfd, struct sockaddr_storage incoming)
 	int stop = 0;
 	socklen_t size_of_incoming = sizeof(incoming);
 	
-	char *exit_message = "exit";
-	size_t exit_message_len = strlen(exit_message);
+	// char *exit_message = "exit";
+	// size_t exit_message_len = strlen(exit_message);
 
 	while (stop == 0) {
 		// getRequest() to be defined
@@ -89,19 +90,39 @@ int attemptFileRetrieval(int connectfd)
 	char* http_response = getStatusGivenCode(500);
 	const char filename[] = "test.txt";
 	FILE *file_pointer = fopen(filename, "rb");
-	
+	int status = 0;
+	http_response = getStatusGivenCode(500);
+
 	if (file_pointer == NULL) {
 		http_response = getStatusGivenCode(404);
 	}
 	else {
+		http_response = getStatusGivenCode(200);	
 		printf("retrieving file: %s\n", filename);
+		
+		uint8_t *file_contents = getFileContentsFromFilePointer(file_pointer);
+		int response_length = strlen(http_response);
+		write(connectfd, http_response, response_length); // 200 response header
+
+		// actual file content
+		status = write(connectfd, file_contents, MESSAGE_MAX_LEN);	
+		
+		return 0;
 	}
 
 	int response_length = strlen(http_response);
-	int status = send(connectfd, http_response, response_length, 0);
-	checkErrors(6, status);
+	status = write(connectfd, http_response, response_length);
 
+	checkErrors(6, status);
 	return 0;
+}
+
+uint8_t *getFileContentsFromFilePointer(FILE *file_pointer)
+{
+	uint8_t *file_contents = malloc(300);
+	fread(file_contents, 1, MESSAGE_MAX_LEN, file_pointer);
+
+	return file_contents;
 }
 
 void checkErrors(int error_type, int status)
