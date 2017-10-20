@@ -23,7 +23,20 @@ char *getStatusGivenCode(int http_response_code)
 		"Content-type: text/html\r\n"
 		"\r\n";
 	}
-	
+
+	if (http_response_code == 400) {
+		status_code = 
+		"HTTP/1.1 400 Bad Request\r\n"
+		"Content-type: text/html\r\n"
+		"\r\n"
+		"<html>\r\n"
+		"	<body>\r\n"
+		"		<h1>Bad Request</h1>\r\n"
+		"		<p>Your request cannot be understood by the server.</p>\r\n"
+		"	</body>\r\n"
+		"</html>\r\n";
+	}
+
 	if (http_response_code == 404) {
 		status_code = 
 		"HTTP/1.1 404 Not Found\r\n"

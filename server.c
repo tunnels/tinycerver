@@ -11,9 +11,12 @@
 
 #define CONNECTION_QUEUE_MAX 5
 #define MESSAGE_MAX_LEN 300
+#define URI_START_INDEX 4
 
 int createConnection(int sockfd, struct sockaddr_storage incoming);
-int attemptFileRetrieval(int connectfd);
+char *getRequestURI(char *messageBuffer);
+int attemptFileRetrieval(int connectfd, char *uri);
+void sendHttpHeader(int connectfd, int code);
 uint8_t *getFileContentsFromFilePointer(FILE *fp);
 void checkErrors(int error_type, int status);
 
@@ -42,8 +45,6 @@ int main(int argc, char *argv[])
 
 	status = listen(sockfd, CONNECTION_QUEUE_MAX);
 	checkErrors(3, status);
-
-	printf("listening on: %s\n", ipstring);
 	
 	createConnection(sockfd, incoming);
 
@@ -55,13 +56,10 @@ int createConnection(int sockfd, struct sockaddr_storage incoming)
 	int status;
 	int stop = 0;
 	socklen_t size_of_incoming = sizeof(incoming);
-	
-	// char *exit_message = "exit";
-	// size_t exit_message_len = strlen(exit_message);
 
 	while (stop == 0) {
-		// getRequest() to be defined
 		char message_buffer[MESSAGE_MAX_LEN] = "";
+		char *uri = "";
 
 		int connectfd = accept(sockfd, (struct sockaddr *)&incoming, &size_of_incoming);
 		checkErrors(4, connectfd);
@@ -69,52 +67,89 @@ int createConnection(int sockfd, struct sockaddr_storage incoming)
 		status = recv(connectfd, (void *)message_buffer, MESSAGE_MAX_LEN, 0);
 		checkErrors(5, status);
 
-		attemptFileRetrieval(connectfd);
-
-		printf("connection recorded\n");
+		uri = getRequestURI(message_buffer);
+		
+		// malformed request, no need to attempt file retrieval
+		if (strcmp(uri, "") == 0) {
+			sendHttpHeader(connectfd, 400);
+		}
+		else {
+			uri = (uri + 1); // skip the initial '/'
+			attemptFileRetrieval(connectfd, uri);
+		}
+		
 		close(connectfd);
-    
-		// printf("message received: %s", message_buffer);
-		// if (strncmp(message_buffer, exit_message, exit_message_len) == 0) {
-		// 	printf("action: terminating connection\n");
-		// 	close(sockfd);
-		// 	break;
-		// }
 	}
 
 	return 0;
 }
 
-int attemptFileRetrieval(int connectfd)
+char *getRequestURI(char *message_buffer)
+{
+	int start = URI_START_INDEX;
+	int end = -1;
+	int length_minus_GET_prefix = MESSAGE_MAX_LEN - URI_START_INDEX;
+
+	for (int i = URI_START_INDEX; i < length_minus_GET_prefix; i++) {
+		if ( *(message_buffer + i) == ' ') {
+			end = i;
+			break;
+		}
+	}
+
+	if (end == -1) {
+		// malformed request since there was no space in the header
+		return ""; 
+	}
+
+	int difference = end - start;
+
+	char *uri = malloc(difference + 1); // extra space for null terminator
+	strncpy(uri, message_buffer + URI_START_INDEX, difference);
+	*(uri + difference) = '\0'; // end uri with null terminator
+
+	return uri;
+}
+
+int attemptFileRetrieval(int connectfd, char *uri)
 {
 	char* http_response = getStatusGivenCode(500);
-	const char filename[] = "test.txt";
-	FILE *file_pointer = fopen(filename, "rb");
+	printf("uri: %s\n", uri);
+
+	if (strcmp(uri, "") == 0) {
+		uri = "index.html";
+		printf("new uri: %s\n", uri);
+	}
+
+	FILE *file_pointer = fopen(uri, "rb");
 	int status = 0;
 	http_response = getStatusGivenCode(500);
 
 	if (file_pointer == NULL) {
-		http_response = getStatusGivenCode(404);
+		// http_response = getStatusGivenCode(404);
+		sendHttpHeader(connectfd, 404);
+		return -1;
 	}
 	else {
 		http_response = getStatusGivenCode(200);	
-		printf("retrieving file: %s\n", filename);
+		printf("retrieving file: %s\n\n", uri);
 		
 		uint8_t *file_contents = getFileContentsFromFilePointer(file_pointer);
-		int response_length = strlen(http_response);
-		write(connectfd, http_response, response_length); // 200 response header
+		// int response_length = strlen(http_response);
 
-		// actual file content
-		status = write(connectfd, file_contents, MESSAGE_MAX_LEN);	
+		sendHttpHeader(connectfd, 200);
+		status = write(connectfd, file_contents, MESSAGE_MAX_LEN);	// actual file content
 		
 		return 0;
 	}
+}
 
+void sendHttpHeader(int connectfd, int code) {
+	char *http_response = getStatusGivenCode(code);	
 	int response_length = strlen(http_response);
-	status = write(connectfd, http_response, response_length);
 
+	int status = write(connectfd, http_response, response_length);
 	checkErrors(6, status);
-	return 0;
 }
 
 uint8_t *getFileContentsFromFilePointer(FILE *file_pointer)
