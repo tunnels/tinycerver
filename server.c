@@ -11,7 +11,7 @@
 
 #define CONNECTION_QUEUE_MAX 5
 #define MESSAGE_MAX_LEN 300
-#define URI_START_INDEX 4
+#define DEFAULT_URI "index.html"
 
 int createConnection(int sockfd, struct sockaddr_storage incoming);
 char *getRequestURI(char *messageBuffer);
@@ -86,11 +86,12 @@ int createConnection(int sockfd, struct sockaddr_storage incoming)
 
 char *getRequestURI(char *message_buffer)
 {
-	int start = URI_START_INDEX;
+	unsigned short uri_start_index = 4; // 0-4 = 'GET '
+	int start = uri_start_index;
 	int end = -1;
-	int length_minus_GET_prefix = MESSAGE_MAX_LEN - URI_START_INDEX;
+	int length_minus_GET_prefix = MESSAGE_MAX_LEN - uri_start_index;
 
-	for (int i = URI_START_INDEX; i < length_minus_GET_prefix; i++) {
+	for (int i = uri_start_index; i < length_minus_GET_prefix; i++) {
 		if ( *(message_buffer + i) == ' ') {
 			end = i;
 			break;
@@ -105,7 +106,7 @@ char *getRequestURI(char *message_buffer)
 	int difference = end - start;
 
 	char *uri = malloc(difference + 1); // extra space for null terminator
-	strncpy(uri, message_buffer + URI_START_INDEX, difference);
+	strncpy(uri, message_buffer + uri_start_index, difference);
 	*(uri + difference) = '\0'; // end uri with null terminator
 
 	return uri;
@@ -117,7 +118,7 @@ int attemptFileRetrieval(int connectfd, char *uri)
 	printf("uri: %s\n", uri);
 
 	if (strcmp(uri, "") == 0) {
-		uri = "index.html";
+		uri = DEFAULT_URI;
 		printf("new uri: %s\n", uri);
 	}
 
@@ -135,7 +136,6 @@ int attemptFileRetrieval(int connectfd, char *uri)
 		printf("retrieving file: %s\n\n", uri);
 		
 		uint8_t *file_contents = getFileContentsFromFilePointer(file_pointer);
-		// int response_length = strlen(http_response);
 
 		sendHttpHeader(connectfd, 200);
 		status = write(connectfd, file_contents, MESSAGE_MAX_LEN);	// actual file content
@@ -144,7 +144,8 @@ int attemptFileRetrieval(int connectfd, char *uri)
 	}
 }
 
-void sendHttpHeader(int connectfd, int code) {
+void sendHttpHeader(int connectfd, int code) 
+{
 	char *http_response = getStatusGivenCode(code);	
 	int response_length = strlen(http_response);
 
@@ -154,7 +155,8 @@ void sendHttpHeader(int connectfd, int code) {
 
 uint8_t *getFileContentsFromFilePointer(FILE *file_pointer)
 {
-	uint8_t *file_contents = malloc(300);
+	uint8_t *file_contents = malloc(MESSAGE_MAX_LEN);
+	memset(file_contents, 0, MESSAGE_MAX_LEN); // init to zero
 	fread(file_contents, 1, MESSAGE_MAX_LEN, file_pointer);
 
 	return file_contents;
